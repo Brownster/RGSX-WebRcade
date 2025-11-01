@@ -58,7 +58,7 @@ jobs:
             if [[ -z "${repo_payload}" ]]; then
               echo "Empty response from upstream repo metadata API" >&2
               exit 1
-            }
+            fi
 
             repo_message="$(echo "${repo_payload}" | jq -r '.message // empty')"
             if [[ -n "${repo_message}" && "${repo_message}" != "null" ]]; then

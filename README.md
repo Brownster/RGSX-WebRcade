@@ -1,6 +1,6 @@
 # RGSX → webЯcade Stack
 
-This folder contains everything you need for a standalone repository that layers the official [`webrcade/webrcade`](https://hub.docker.com/r/webrcade/webrcade) image together with an automated feed generator for RGSX libraries.
+This layers the official [`webrcade/webrcade`](https://hub.docker.com/r/webrcade/webrcade) image together with an automated feed generator for RGSX libraries.
 
 The resulting container:
 
