@@ -1,115 +1,217 @@
-name: Rebuild on upstream changes
+name: Sync with upstream webrcade
 
 on:
-  workflow_dispatch:
   schedule:
-    - cron: "15 * * * *" # check hourly at hh:15
+    - cron: '0 */6 * * *'
+  workflow_dispatch: {}
 
 permissions:
   contents: write
   packages: write
 
+env:
+  GHCR_IMAGE: ghcr.io/${{ github.repository }}
+  DOCKERHUB_IMAGE: ${{ vars.DOCKERHUB_IMAGE || secrets.DOCKERHUB_IMAGE }}
+
 jobs:
   check-upstream:
-    name: Detect new webrcade main commit
     runs-on: ubuntu-latest
     outputs:
-      upstream_sha: ${{ steps.detect.outputs.sha }}
-      upstream_tag: ${{ steps.detect.outputs.tag }}
-      upstream_short_sha: ${{ steps.detect.outputs.short_sha }}
-      commit_title: ${{ steps.detect.outputs.commit_title }}
-      commit_url: ${{ steps.detect.outputs.commit_url }}
-      should_build: ${{ steps.detect.outputs.should_build }}
+      has_new_commits: ${{ steps.check.outputs.has_new_commits }}
+      upstream_sha: ${{ steps.check.outputs.upstream_sha }}
+      upstream_short_sha: ${{ steps.check.outputs.upstream_short_sha }}
+      new_version: ${{ steps.check.outputs.new_version }}
     steps:
-      - name: Determine latest upstream SHA
-        id: detect
-        env:
-          TARGET_REPO: webrcade/webrcade
-          RELEASE_PREFIX: webrcade-
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check upstream for new commits
+        id: check
         run: |
           set -euo pipefail
-          sha="$(git ls-remote https://github.com/${TARGET_REPO}.git refs/heads/main | cut -f1)"
-          echo "sha=${sha}" >> "${GITHUB_OUTPUT}"
-          tag="${RELEASE_PREFIX}${sha}"
-          echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
-          echo "short_sha=${sha:0:7}" >> "${GITHUB_OUTPUT}"
 
-          commit_payload="$(curl -fsSL \
-            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/${TARGET_REPO}/commits/${sha}")"
+          API_URL="https://api.github.com/repos/webrcade/webrcade/commits/main"
+          UPSTREAM_SHA=$(curl -fsSL "${API_URL}" | jq -r '.sha')
+          if [[ -z "${UPSTREAM_SHA}" || "${UPSTREAM_SHA}" == "null" ]]; then
+            echo "Failed to fetch upstream SHA" >&2
+            exit 1
+          fi
 
-          commit_title="$(echo "${commit_payload}" | jq -r '.commit.message | split("\n")[0]')"
-          echo "commit_title=${commit_title}" >> "${GITHUB_OUTPUT}"
+          echo "Upstream SHA: ${UPSTREAM_SHA}"
+          echo "upstream_sha=${UPSTREAM_SHA}" >> "${GITHUB_OUTPUT}"
+          echo "upstream_short_sha=${UPSTREAM_SHA:0:7}" >> "${GITHUB_OUTPUT}"
 
-          commit_url="$(echo "${commit_payload}" | jq -r '.html_url')"
-          echo "commit_url=${commit_url}" >> "${GITHUB_OUTPUT}"
+          LAST_BUILT_SHA=$(git log --all --grep="upstream-sha: ${UPSTREAM_SHA}" --format="%H" | head -1 || true)
 
-          status="$(curl -s -o /dev/null -w "%{http_code}" \
-            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/${tag}")"
+          if [[ -z "${LAST_BUILT_SHA}" ]]; then
+            echo "has_new_commits=true" >> "${GITHUB_OUTPUT}"
+            echo "New upstream commit detected."
 
-          if [[ "${status}" == "200" ]]; then
-            echo "should_build=false" >> "${GITHUB_OUTPUT}"
-            echo "Latest upstream commit already processed (${tag})."
+            DATE_VERSION=$(date +%Y.%m.%d)
+            DATE_VERSION_REGEX=${DATE_VERSION//./\\.}
+            EXISTING_TAGS=$(git tag -l "v${DATE_VERSION}.*" 2>/dev/null || true)
+
+            if [[ -n "${EXISTING_TAGS}" ]]; then
+              MAX_COUNT=$(printf '%s\n' "${EXISTING_TAGS}" \
+                | sed -E "s/^v${DATE_VERSION_REGEX}\.([0-9]+)$/\\1/" \
+                | grep -E '^[0-9]+$' \
+                | sort -n \
+                | tail -1)
+
+              if [[ -n "${MAX_COUNT}" ]]; then
+                NEXT_COUNT=$((MAX_COUNT + 1))
+              else
+                TOTAL_TAGS=$(printf '%s\n' "${EXISTING_TAGS}" | wc -l | tr -d ' ')
+                NEXT_COUNT=$((TOTAL_TAGS + 1))
+              fi
+            else
+              NEXT_COUNT=1
+            fi
+
+            NEW_VERSION="${DATE_VERSION}.${NEXT_COUNT}"
+            echo "new_version=${NEW_VERSION}" >> "${GITHUB_OUTPUT}"
+            echo "Will create version ${NEW_VERSION}"
           else
-            echo "should_build=true" >> "${GITHUB_OUTPUT}"
-            echo "New upstream commit detected (${sha})."
+            echo "has_new_commits=false" >> "${GITHUB_OUTPUT}"
+            echo "Upstream commit ${UPSTREAM_SHA} already processed."
           fi
 
   build-and-release:
-    name: Build image and publish release
     needs: check-upstream
-    if: needs.check-upstream.outputs.should_build == 'true'
+    if: needs.check-upstream.outputs.has_new_commits == 'true'
     runs-on: ubuntu-latest
-    env:
-      IMAGE_ROOT: ghcr.io/${{ lower(github.repository_owner) }}/rgsx-webrcade
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to GitHub Container Registry
+      - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: ${{ github.repository_owner }}
+          username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push container image
-        uses: docker/build-push-action@v5
+      - name: Log in to Docker Hub (optional)
+        if: ${{ env.DOCKERHUB_IMAGE != '' }}
+        uses: docker/login-action@v3
         with:
-          context: .
-          push: true
-          tags: |
-            ${{ env.IMAGE_ROOT }}:latest
-            ${{ env.IMAGE_ROOT }}:${{ needs.check-upstream.outputs.upstream_tag }}
-            ${{ env.IMAGE_ROOT }}:${{ needs.check-upstream.outputs.upstream_short_sha }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Generate release notes
-        id: notes
+      - name: Derive tags
+        id: vars
         env:
-          IMAGE_ROOT: ${{ env.IMAGE_ROOT }}
+          GHCR_IMAGE: ${{ env.GHCR_IMAGE }}
+          DOCKERHUB_IMAGE: ${{ env.DOCKERHUB_IMAGE }}
+          UPSTREAM_SHA: ${{ needs.check-upstream.outputs.upstream_sha }}
+          VERSION: ${{ needs.check-upstream.outputs.new_version }}
         run: |
           set -euo pipefail
-          cat <<'EOF' > RELEASE.md
-          ### Upstream
-          - Commit: [${{ needs.check-upstream.outputs.upstream_short_sha }}](${{ needs.check-upstream.outputs.commit_url }})
-          - Message: ${{ needs.check-upstream.outputs.commit_title }}
 
-          ### Container Images
-          - `${IMAGE_ROOT}:latest`
-          - `${IMAGE_ROOT}:${{ needs.check-upstream.outputs.upstream_tag }}`
-          - `${IMAGE_ROOT}:${{ needs.check-upstream.outputs.upstream_short_sha }}`
+          SHORT_SHA="${UPSTREAM_SHA:0:7}"
+          GHCR_IMAGE_LOWER=$(echo "${GHCR_IMAGE}" | tr '[:upper:]' '[:lower:]')
+          DOCKERHUB_IMAGE_LOWER=$(echo "${DOCKERHUB_IMAGE}" | tr '[:upper:]' '[:lower:]')
+
+          echo "short_sha=${SHORT_SHA}" >> "${GITHUB_OUTPUT}"
+          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "ghcr_tags=${GHCR_IMAGE_LOWER}:${VERSION},${GHCR_IMAGE_LOWER}:latest,${GHCR_IMAGE_LOWER}:${SHORT_SHA}" >> "${GITHUB_OUTPUT}"
+
+          if [[ -n "${DOCKERHUB_IMAGE_LOWER}" ]]; then
+            echo "dh_tags=${DOCKERHUB_IMAGE_LOWER}:${VERSION},${DOCKERHUB_IMAGE_LOWER}:latest,${DOCKERHUB_IMAGE_LOWER}:${SHORT_SHA}" >> "${GITHUB_OUTPUT}"
+          else
+            echo "dh_tags=" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Build and push (GHCR)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          push: true
+          provenance: false
+          tags: ${{ steps.vars.outputs.ghcr_tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.vars.outputs.version }}
+            webrcade.upstream.sha=${{ needs.check-upstream.outputs.upstream_sha }}
+
+      - name: Build and push (Docker Hub)
+        if: ${{ steps.vars.outputs.dh_tags != '' }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          push: true
+          provenance: false
+          tags: ${{ steps.vars.outputs.dh_tags }}
+          cache-from: type=gha
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.vars.outputs.version }}
+            webrcade.upstream.sha=${{ needs.check-upstream.outputs.upstream_sha }}
+
+      - name: Create Git tag
+        env:
+          VERSION: ${{ steps.vars.outputs.version }}
+          UPSTREAM_SHA: ${{ needs.check-upstream.outputs.upstream_sha }}
+          SHORT_SHA: ${{ steps.vars.outputs.short_sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          cat > /tmp/tag_message.txt <<EOF
+          Automated release v${VERSION}
+
+          Synced with upstream webrcade commit ${SHORT_SHA}
+          upstream-sha: ${UPSTREAM_SHA}
+
+          Docker images:
+          - ghcr.io/${REPO}:${VERSION}
+          - ghcr.io/${REPO}:${SHORT_SHA}
+          - ghcr.io/${REPO}:latest
           EOF
 
-      - name: Publish GitHub release
-        uses: softprops/action-gh-release@v1
+          git tag -a "v${VERSION}" -F /tmp/tag_message.txt
+          git push origin "v${VERSION}"
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ needs.check-upstream.outputs.upstream_tag }}
-          name: Webrcade upstream ${{ needs.check-upstream.outputs.upstream_short_sha }}
-          body_path: RELEASE.md
+          tag_name: v${{ steps.vars.outputs.version }}
+          name: Release v${{ steps.vars.outputs.version }}
+          body: |
+            ## Automated Release
+
+            This release automatically synced with upstream webrcade repository.
+
+            **Upstream Commit:** webrcade/webrcade@${{ steps.vars.outputs.short_sha }}
+
+            ### Docker Images
+
+            ```bash
+            docker pull ghcr.io/${{ github.repository }}:${{ steps.vars.outputs.version }}
+            docker pull ghcr.io/${{ github.repository }}:${{ steps.vars.outputs.short_sha }}
+            docker pull ghcr.io/${{ github.repository }}:latest
+            ```
+
+            ### What's New
+
+            Includes all changes from [webrcade/webrcade](https://github.com/webrcade/webrcade/commits/main) up to commit [${{ steps.vars.outputs.short_sha }}](https://github.com/webrcade/webrcade/commit/${{ needs.check-upstream.outputs.upstream_sha }}).
           draft: false
           prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
