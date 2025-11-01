@@ -7,6 +7,8 @@ The resulting container:
 * pulls the latest published webЯcade image during `docker build`
 * installs Python and cron
 * ships a helper script that converts the RGSX cache (`systems_list.json`, `games/*.json`) into a webЯcade feed
+* automatically includes BIOS configuration for Neo Geo and PlayStation systems
+* copies platform artwork from RGSX to display console images in webЯcade categories
 * runs the helper script on startup and every 30 minutes (adjustable)
 
 ## Directory Layout
@@ -59,13 +61,33 @@ Environment variables (set in `docker-compose.yml`) control the generator:
 
 | Variable | Purpose | Default |
 | --- | --- | --- |
-| `RGSX_DATA_PATH` | Path to RGSX cache inside container | `/mnt/rgsx/saves/ports/rgsx` |
+| `RGSX_DATA_PATH` | Path to RGSX cache inside container | `/mnt/rgsx/saves/ports/RGSX` |
 | `FEED_OUTPUT_PATH` | Output feed location | `/var/www/html/content/feeds/rgsx_feed.json` |
 | `SYSTEM_MAPPING_PATH` | System → type map | `/opt/rgsx/system_mapping.json` |
 | `FEED_TITLE` / `FEED_DESCRIPTION` | Feed metadata strings | `RGSX Library` / generated timestamp |
 | `FEED_CATEGORY_PREFIX` | Prefix prepended to each category title | `""` |
 | `ROM_PREFIX_URL` | Optional base URL if RGSX game entries only contain relative paths | unset |
+| `PLATFORM_IMAGE_URL_PREFIX` | Base URL for platform artwork (console images) | unset |
+| `NEOGEO_BIOS_URL` | URL to Neo Geo BIOS file (neogeo.zip) | `https://archive.org/download/neogeoaesmvscomplete/BIOS/neogeo.zip` |
+| `PSX_BIOS_URLS` | Comma-separated URLs to PlayStation BIOS files | Default URLs for scph5500.bin, scph5501.bin, scph5502.bin |
 | `FEED_RUN_ON_START` | Set to `0` to skip the initial run at container start | `1` |
+
+### Platform Artwork
+
+When `PLATFORM_IMAGE_URL_PREFIX` is set, the generator will automatically:
+* Copy platform images from `${RGSX_DATA_PATH}/images/` to `/var/www/html/content/images/platforms/` on startup
+* Add thumbnail and background URLs to each category using the console images from RGSX
+* URL-encode filenames to handle spaces properly
+
+This displays console artwork for each system category in the webЯcade UI.
+
+### BIOS Support
+
+The feed includes automatic BIOS configuration for:
+* **Neo Geo**: Requires neogeo.zip BIOS file
+* **PlayStation**: Requires three BIOS files (Japan/USA/Europe regions)
+
+These BIOS files are automatically downloaded by webЯcade when needed. You can override the URLs using the environment variables above.
 
 Adjust the cron schedule by editing `cron/rgsx-feed`. For example, to run hourly change `*/30` to `0`.
 

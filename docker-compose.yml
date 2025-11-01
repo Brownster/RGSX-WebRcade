@@ -2,9 +2,8 @@ version: "3.9"
 
 services:
   rgsx-webrcade:
-    build:
-      context: .
-    image: rgsx-webrcade:latest
+    # Use pre-built image from GitHub Container Registry
+    image: ghcr.io/brownster/rgsx-webrcade:latest
     container_name: rgsx-webrcade
     network_mode: bridge
     ports:
@@ -39,4 +38,6 @@ services:
       - FEED_RUN_ON_START=1
       # Optional: Prefix for ROM URLs if RGSX doesn't store full URLs
       # - ROM_PREFIX_URL=https://your-rom-host.example.com/roms
+      # Enable platform artwork from RGSX images folder
+      - PLATFORM_IMAGE_URL_PREFIX=http://localhost:8080/content/images/platforms
     restart: unless-stopped
