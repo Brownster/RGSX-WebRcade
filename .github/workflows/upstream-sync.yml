@@ -32,9 +32,37 @@ jobs:
         run: |
           set -euo pipefail
 
-          UPSTREAM_SHA=$(git ls-remote https://github.com/webrcade/webrcade.git refs/heads/main | awk '{print $1}')
-          if [[ -z "${UPSTREAM_SHA}" ]]; then
-            echo "Failed to retrieve upstream SHA" >&2
+          API_URL="https://api.github.com/repos/webrcade/webrcade/commits/main"
+
+          curl_args=(
+            -sSL
+            -H "Accept: application/vnd.github+json"
+            -H "User-Agent: rgsx-webrcade-sync"
+          )
+          if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+            curl_args+=( -H "Authorization: Bearer ${GITHUB_TOKEN}" )
+          fi
+
+          commit_payload="$(curl "${curl_args[@]}" "${API_URL}")" || {
+            echo "Failed to query upstream commits API" >&2
+            exit 1
+          }
+
+          if [[ -z "${commit_payload}" ]]; then
+            echo "Empty response from upstream commits API" >&2
+            exit 1
+          fi
+
+          message="$(echo "${commit_payload}" | jq -r '.message // empty')"
+          if [[ -n "${message}" && "${message}" != "null" ]]; then
+            echo "GitHub API error: ${message}" >&2
+            exit 1
+          fi
+
+          UPSTREAM_SHA="$(echo "${commit_payload}" | jq -r '.sha // empty')"
+          if [[ -z "${UPSTREAM_SHA}" || "${UPSTREAM_SHA}" == "null" ]]; then
+            echo "Failed to parse upstream SHA from payload" >&2
+            echo "${commit_payload}" >&2
             exit 1
           fi
 
