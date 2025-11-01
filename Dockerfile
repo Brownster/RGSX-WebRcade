@@ -32,7 +32,8 @@ ENV RGSX_DATA_PATH=/mnt/rgsx/saves/ports/RGSX \
     FEED_TITLE="RGSX Library" \
     FEED_DESCRIPTION="Feed generated from RGSX caches." \
     FEED_CATEGORY_PREFIX="" \
-    FEED_RUN_ON_START=1
+    FEED_RUN_ON_START=1 \
+    NEOGEO_BIOS_URL="https://archive.org/download/neogeoaesmvscomplete/BIOS/neogeo.zip"
 
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["/home/start.sh"]

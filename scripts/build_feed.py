@@ -16,6 +16,7 @@ Environment variables:
   FEED_DESCRIPTION     Feed description string.
   FEED_CATEGORY_PREFIX Optional string prefixed to each category title.
   ROM_PREFIX_URL       Optional base URL used when game metadata lacks a fully-qualified URL.
+  NEOGEO_BIOS_URL      URL to Neo Geo BIOS file (neogeo.zip) required for Neo Geo games.
 
 Command line flags:
   --dry-run            Do not write feed file; emit to stdout instead.
@@ -50,6 +51,7 @@ class Config:
     feed_description: str
     category_prefix: str
     rom_prefix_url: Optional[str]
+    neogeo_bios_url: Optional[str]
 
 
 def load_json(path: Path) -> Optional[Iterable]:
@@ -77,6 +79,10 @@ def build_config() -> Config:
     )
     category_prefix = os.environ.get("FEED_CATEGORY_PREFIX", "")
     rom_prefix_url = os.environ.get("ROM_PREFIX_URL")
+    neogeo_bios_url = os.environ.get(
+        "NEOGEO_BIOS_URL",
+        "https://archive.org/download/neogeoaesmvscomplete/BIOS/neogeo.zip"
+    )
 
     return Config(
         rgsx_base=rgsx_base,
@@ -88,6 +94,7 @@ def build_config() -> Config:
         feed_description=feed_description,
         category_prefix=category_prefix,
         rom_prefix_url=rom_prefix_url.rstrip("/") if rom_prefix_url else None,
+        neogeo_bios_url=neogeo_bios_url,
     )
 
 
@@ -227,6 +234,15 @@ def generate_feed(config: Config, *, dry_run: bool) -> int:
         "description": config.feed_description,
         "categories": [],
     }
+
+    # Add feed-level properties for systems that require BIOS files
+    feed_props = {}
+    if config.neogeo_bios_url:
+        feed_props["neogeo"] = {
+            "bios": config.neogeo_bios_url
+        }
+    if feed_props:
+        feed["props"] = feed_props
 
     for system in systems:
         system_type = map_system_name(system, mapping)
