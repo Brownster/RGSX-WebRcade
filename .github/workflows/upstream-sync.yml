@@ -95,15 +95,15 @@ jobs:
         run: |
           set -euo pipefail
           cat <<'EOF' > RELEASE.md
-### Upstream
-- Commit: [${{ needs.check-upstream.outputs.upstream_short_sha }}](${{ needs.check-upstream.outputs.commit_url }})
-- Message: ${{ needs.check-upstream.outputs.commit_title }}
+          ### Upstream
+          - Commit: [${{ needs.check-upstream.outputs.upstream_short_sha }}](${{ needs.check-upstream.outputs.commit_url }})
+          - Message: ${{ needs.check-upstream.outputs.commit_title }}
 
-### Container Images
-- `${IMAGE_ROOT}:latest`
-- `${IMAGE_ROOT}:${{ needs.check-upstream.outputs.upstream_tag }}`
-- `${IMAGE_ROOT}:${{ needs.check-upstream.outputs.upstream_short_sha }}`
-EOF
+          ### Container Images
+          - `${IMAGE_ROOT}:latest`
+          - `${IMAGE_ROOT}:${{ needs.check-upstream.outputs.upstream_tag }}`
+          - `${IMAGE_ROOT}:${{ needs.check-upstream.outputs.upstream_short_sha }}`
+          EOF
 
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v1
