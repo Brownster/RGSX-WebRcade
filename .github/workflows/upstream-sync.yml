@@ -16,6 +16,9 @@ env:
 jobs:
   check-upstream:
     runs-on: ubuntu-latest
+    env:
+      TARGET_REPO: webrcade/webrcade
+      TARGET_BRANCH: ""
     outputs:
       has_new_commits: ${{ steps.check.outputs.has_new_commits }}
       upstream_sha: ${{ steps.check.outputs.upstream_sha }}
@@ -32,7 +35,11 @@ jobs:
         run: |
           set -euo pipefail
 
-          API_URL="https://api.github.com/repos/webrcade/webrcade/commits/main"
+          TARGET_REPO="${TARGET_REPO:-webrcade/webrcade}"
+          TARGET_BRANCH="${TARGET_BRANCH:-}"
+
+          API_ROOT="https://api.github.com"
+          repo_api="${API_ROOT}/repos/${TARGET_REPO}"
 
           curl_args=(
             -sSL
@@ -42,6 +49,31 @@ jobs:
           if [[ -n "${GITHUB_TOKEN:-}" ]]; then
             curl_args+=( -H "Authorization: Bearer ${GITHUB_TOKEN}" )
           fi
+
+          if [[ -z "${TARGET_BRANCH}" ]]; then
+            repo_payload="$(curl "${curl_args[@]}" "${repo_api}")" || {
+              echo "Failed to query upstream repo metadata" >&2
+              exit 1
+            }
+            if [[ -z "${repo_payload}" ]]; then
+              echo "Empty response from upstream repo metadata API" >&2
+              exit 1
+            }
+
+            repo_message="$(echo "${repo_payload}" | jq -r '.message // empty')"
+            if [[ -n "${repo_message}" && "${repo_message}" != "null" ]]; then
+              echo "GitHub API error (repo metadata): ${repo_message}" >&2
+              exit 1
+            fi
+
+            TARGET_BRANCH="$(echo "${repo_payload}" | jq -r '.default_branch // empty')"
+            if [[ -z "${TARGET_BRANCH}" || "${TARGET_BRANCH}" == "null" ]]; then
+              echo "Failed to determine upstream default branch" >&2
+              exit 1
+            fi
+          fi
+
+          API_URL="${repo_api}/commits/${TARGET_BRANCH}"
 
           commit_payload="$(curl "${curl_args[@]}" "${API_URL}")" || {
             echo "Failed to query upstream commits API" >&2
