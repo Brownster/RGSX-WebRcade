@@ -32,40 +32,9 @@ jobs:
         run: |
           set -euo pipefail
 
-          API_URL="https://api.github.com/repos/webrcade/webrcade/commits/main"
-          tmp_payload=$(mktemp)
-          trap 'rm -f "${tmp_payload}"' EXIT
-
-          curl_args=(
-            -sSL
-            -H "Accept: application/vnd.github+json"
-            -H "User-Agent: rgsx-webrcade-sync"
-            -o "${tmp_payload}"
-            -w "%{http_code}"
-          )
-          if [[ -n "${GITHUB_TOKEN:-}" ]]; then
-            curl_args+=( -H "Authorization: Bearer ${GITHUB_TOKEN}" )
-          fi
-
-          http_status=$(curl "${curl_args[@]}" "${API_URL}")
-          if [[ "${http_status}" -ge 400 || "${http_status}" -lt 200 ]]; then
-            echo "GitHub API returned status ${http_status}" >&2
-            cat "${tmp_payload}" >&2 || true
-            exit 1
-          fi
-
-          commit_payload=$(cat "${tmp_payload}")
-          rm -f "${tmp_payload}"
-
-          message=$(echo "${commit_payload}" | jq -r '.message // empty')
-          if [[ -n "${message}" && "${message}" != "null" ]]; then
-            echo "GitHub API returned error: ${message}" >&2
-            exit 1
-          fi
-
-          UPSTREAM_SHA=$(echo "${commit_payload}" | jq -r '.sha')
-          if [[ -z "${UPSTREAM_SHA}" || "${UPSTREAM_SHA}" == "null" ]]; then
-            echo "Failed to parse upstream SHA from payload" >&2
+          UPSTREAM_SHA=$(git ls-remote https://github.com/webrcade/webrcade.git refs/heads/main | awk '{print $1}')
+          if [[ -z "${UPSTREAM_SHA}" ]]; then
+            echo "Failed to retrieve upstream SHA" >&2
             exit 1
           fi
 
