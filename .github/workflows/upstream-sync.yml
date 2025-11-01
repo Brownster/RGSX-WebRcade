@@ -39,21 +39,10 @@ jobs:
             -H "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/${TARGET_REPO}/commits/${sha}")"
 
-          commit_title="$(python - <<'PY'
-import json, sys
-payload = json.load(sys.stdin)
-message = payload["commit"]["message"]
-print(message.splitlines()[0])
-PY
-<<<"${commit_payload}")"
+          commit_title="$(echo "${commit_payload}" | jq -r '.commit.message | split("\n")[0]')"
           echo "commit_title=${commit_title}" >> "${GITHUB_OUTPUT}"
 
-          commit_url="$(python - <<'PY'
-import json, sys
-payload = json.load(sys.stdin)
-print(payload["html_url"])
-PY
-<<<"${commit_payload}")"
+          commit_url="$(echo "${commit_payload}" | jq -r '.html_url')"
           echo "commit_url=${commit_url}" >> "${GITHUB_OUTPUT}"
 
           status="$(curl -s -o /dev/null -w "%{http_code}" \
