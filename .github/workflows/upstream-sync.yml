@@ -33,19 +33,29 @@ jobs:
           set -euo pipefail
 
           API_URL="https://api.github.com/repos/webrcade/webrcade/commits/main"
-          AUTH_HEADER=""
+          tmp_payload=$(mktemp)
+          trap 'rm -f "${tmp_payload}"' EXIT
+
+          curl_args=(
+            -sSL
+            -H "Accept: application/vnd.github+json"
+            -H "User-Agent: rgsx-webrcade-sync"
+            -o "${tmp_payload}"
+            -w "%{http_code}"
+          )
           if [[ -n "${GITHUB_TOKEN:-}" ]]; then
-            AUTH_HEADER="-H \"Authorization: Bearer ${GITHUB_TOKEN}\""
+            curl_args+=( -H "Authorization: Bearer ${GITHUB_TOKEN}" )
           fi
 
-          commit_payload=$(curl -fsSL \
-            -H "Accept: application/vnd.github+json" \
-            -H "User-Agent: rgsx-webrcade-sync" \
-            ${AUTH_HEADER} \
-            "${API_URL}") || {
-              echo "Failed to fetch upstream commit payload" >&2
-              exit 1
-            }
+          http_status=$(curl "${curl_args[@]}" "${API_URL}")
+          if [[ "${http_status}" -ge 400 || "${http_status}" -lt 200 ]]; then
+            echo "GitHub API returned status ${http_status}" >&2
+            cat "${tmp_payload}" >&2 || true
+            exit 1
+          fi
+
+          commit_payload=$(cat "${tmp_payload}")
+          rm -f "${tmp_payload}"
 
           message=$(echo "${commit_payload}" | jq -r '.message // empty')
           if [[ -n "${message}" && "${message}" != "null" ]]; then
