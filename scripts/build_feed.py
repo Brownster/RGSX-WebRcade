@@ -248,9 +248,7 @@ def generate_feed(config: Config, *, dry_run: bool) -> int:
     # Add feed-level properties for systems that require BIOS files
     feed_props = {}
     if config.neogeo_bios_url:
-        feed_props["neogeo"] = {
-            "bios": config.neogeo_bios_url
-        }
+        feed_props["neogeo_bios"] = config.neogeo_bios_url
     if config.psx_bios_urls:
         feed_props["psx_bios"] = config.psx_bios_urls
     if feed_props:
