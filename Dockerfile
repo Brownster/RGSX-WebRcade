@@ -33,6 +33,7 @@ ENV RGSX_DATA_PATH=/mnt/rgsx/saves/ports/RGSX \
     FEED_DESCRIPTION="Feed generated from RGSX caches." \
     FEED_CATEGORY_PREFIX="" \
     FEED_RUN_ON_START=1 \
+    PLATFORM_IMAGE_URL_PREFIX="" \
     NEOGEO_BIOS_URL="https://archive.org/download/neogeoaesmvscomplete/BIOS/neogeo.zip" \
     PSX_BIOS_URLS="https://psx.arthus.net/roms/bios/scph5500.bin,https://psx.arthus.net/roms/bios/scph5501.bin,https://psx.arthus.net/roms/bios/scph5502.bin"
 

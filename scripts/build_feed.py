@@ -16,6 +16,7 @@ Environment variables:
   FEED_DESCRIPTION     Feed description string.
   FEED_CATEGORY_PREFIX Optional string prefixed to each category title.
   ROM_PREFIX_URL       Optional base URL used when game metadata lacks a fully-qualified URL.
+  PLATFORM_IMAGE_URL_PREFIX Optional base URL prefix for platform images (category thumbnails).
   NEOGEO_BIOS_URL      URL to Neo Geo BIOS file (neogeo.zip) required for Neo Geo games.
   PSX_BIOS_URLS        Comma-separated URLs to PlayStation BIOS files (scph5500.bin,scph5501.bin,scph5502.bin).
 
@@ -52,6 +53,7 @@ class Config:
     feed_description: str
     category_prefix: str
     rom_prefix_url: Optional[str]
+    platform_image_url_prefix: Optional[str]
     neogeo_bios_url: Optional[str]
     psx_bios_urls: Optional[List[str]]
 
@@ -81,6 +83,7 @@ def build_config() -> Config:
     )
     category_prefix = os.environ.get("FEED_CATEGORY_PREFIX", "")
     rom_prefix_url = os.environ.get("ROM_PREFIX_URL")
+    platform_image_url_prefix = os.environ.get("PLATFORM_IMAGE_URL_PREFIX")
     neogeo_bios_url = os.environ.get(
         "NEOGEO_BIOS_URL",
         "https://archive.org/download/neogeoaesmvscomplete/BIOS/neogeo.zip"
@@ -103,6 +106,7 @@ def build_config() -> Config:
         feed_description=feed_description,
         category_prefix=category_prefix,
         rom_prefix_url=rom_prefix_url.rstrip("/") if rom_prefix_url else None,
+        platform_image_url_prefix=platform_image_url_prefix.rstrip("/") if platform_image_url_prefix else None,
         neogeo_bios_url=neogeo_bios_url,
         psx_bios_urls=psx_bios_urls,
     )
@@ -272,7 +276,19 @@ def generate_feed(config: Config, *, dry_run: bool) -> int:
             continue
 
         category_title = f"{config.category_prefix}{system_name}"
-        feed["categories"].append({"title": category_title, "items": items})
+        category = {"title": category_title, "items": items}
+
+        # Add platform image as category thumbnail if available
+        if config.platform_image_url_prefix and system.get("platform_image"):
+            from urllib.parse import quote
+            image_filename = system["platform_image"]
+            # URL encode the filename to handle spaces
+            encoded_filename = quote(image_filename)
+            category["thumbnail"] = f"{config.platform_image_url_prefix}/{encoded_filename}"
+            # Use same image for background
+            category["background"] = f"{config.platform_image_url_prefix}/{encoded_filename}"
+
+        feed["categories"].append(category)
 
     if not feed["categories"]:
         logging.error("No categories generated; feed will not be written.")
