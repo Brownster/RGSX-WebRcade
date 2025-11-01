@@ -17,6 +17,7 @@ Environment variables:
   FEED_CATEGORY_PREFIX Optional string prefixed to each category title.
   ROM_PREFIX_URL       Optional base URL used when game metadata lacks a fully-qualified URL.
   NEOGEO_BIOS_URL      URL to Neo Geo BIOS file (neogeo.zip) required for Neo Geo games.
+  PSX_BIOS_URLS        Comma-separated URLs to PlayStation BIOS files (scph5500.bin,scph5501.bin,scph5502.bin).
 
 Command line flags:
   --dry-run            Do not write feed file; emit to stdout instead.
@@ -52,6 +53,7 @@ class Config:
     category_prefix: str
     rom_prefix_url: Optional[str]
     neogeo_bios_url: Optional[str]
+    psx_bios_urls: Optional[List[str]]
 
 
 def load_json(path: Path) -> Optional[Iterable]:
@@ -84,6 +86,13 @@ def build_config() -> Config:
         "https://archive.org/download/neogeoaesmvscomplete/BIOS/neogeo.zip"
     )
 
+    # PlayStation BIOS files (can be comma-separated list)
+    psx_bios_env = os.environ.get(
+        "PSX_BIOS_URLS",
+        "https://psx.arthus.net/roms/bios/scph5500.bin,https://psx.arthus.net/roms/bios/scph5501.bin,https://psx.arthus.net/roms/bios/scph5502.bin"
+    )
+    psx_bios_urls = [url.strip() for url in psx_bios_env.split(",") if url.strip()] if psx_bios_env else None
+
     return Config(
         rgsx_base=rgsx_base,
         systems_file=systems_file,
@@ -95,6 +104,7 @@ def build_config() -> Config:
         category_prefix=category_prefix,
         rom_prefix_url=rom_prefix_url.rstrip("/") if rom_prefix_url else None,
         neogeo_bios_url=neogeo_bios_url,
+        psx_bios_urls=psx_bios_urls,
     )
 
 
@@ -241,6 +251,8 @@ def generate_feed(config: Config, *, dry_run: bool) -> int:
         feed_props["neogeo"] = {
             "bios": config.neogeo_bios_url
         }
+    if config.psx_bios_urls:
+        feed_props["psx_bios"] = config.psx_bios_urls
     if feed_props:
         feed["props"] = feed_props
 
