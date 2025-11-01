@@ -6,17 +6,37 @@ services:
       context: .
     image: rgsx-webrcade:latest
     container_name: rgsx-webrcade
+    network_mode: bridge
     ports:
       - "8080:80"
       - "8443:443"
     volumes:
+      # webЯcade content directory (feeds, save states, etc.)
       - ./content:/var/www/html/content
-      # Mount the RGSX cache directory that contains systems_list.json and games/*.json
-      - ./examples/rgsx-cache:/mnt/rgsx/saves/ports/RGSX:ro
+
+      # IMPORTANT: Update this path to match your RGSX installation
+      # This should point to where RGSX stores its cache (systems_list.json and games/*.json)
+      #
+      # OPTION 1: For local testing with sample data (current setup)
+      - ./saves_ports_rgsx:/mnt/rgsx/saves/ports/RGSX:ro
+
+      # OPTION 2: For production - mount your actual RGSX cache directory
+      # Replace with your actual RGSX saves path from the host
+      # Example: If RGSX saves to /home/lucy/docker/rgsx/saves/ports/RGSX/
+      # - /home/lucy/docker/rgsx/saves/ports/RGSX:/mnt/rgsx/saves/ports/RGSX:ro
+
+      # Note: Check if your RGSX creates "RGSX" (uppercase) or "rgsx" (lowercase)
+      # Adjust the path accordingly
     environment:
+      - TZ=Europe/London
+      - PUID=1000
+      - PGID=1000
       - FEED_TITLE=RGSX Library
       - FEED_DESCRIPTION=Generated for webЯcade from RGSX metadata
-      # Uncomment to change how frequently cron runs (default every 30 minutes)
-      # - FEED_RUN_ON_START=1
+      # Path inside container where RGSX cache is mounted (matches volume above)
+      - RGSX_DATA_PATH=/mnt/rgsx/saves/ports/RGSX
+      # Run feed generation at container startup
+      - FEED_RUN_ON_START=1
+      # Optional: Prefix for ROM URLs if RGSX doesn't store full URLs
       # - ROM_PREFIX_URL=https://your-rom-host.example.com/roms
     restart: unless-stopped
