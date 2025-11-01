@@ -1,0 +1,22 @@
+version: "3.9"
+
+services:
+  rgsx-webrcade:
+    build:
+      context: .
+    image: rgsx-webrcade:latest
+    container_name: rgsx-webrcade
+    ports:
+      - "8080:80"
+      - "8443:443"
+    volumes:
+      - ./content:/var/www/html/content
+      # Mount the RGSX cache directory that contains systems_list.json and games/*.json
+      - ./examples/rgsx-cache:/mnt/rgsx/saves/ports/RGSX:ro
+    environment:
+      - FEED_TITLE=RGSX Library
+      - FEED_DESCRIPTION=Generated for webЯcade from RGSX metadata
+      # Uncomment to change how frequently cron runs (default every 30 minutes)
+      # - FEED_RUN_ON_START=1
+      # - ROM_PREFIX_URL=https://your-rom-host.example.com/roms
+    restart: unless-stopped
