@@ -33,10 +33,15 @@ jobs:
           set -euo pipefail
 
           API_URL="https://api.github.com/repos/webrcade/webrcade/commits/main"
+          AUTH_HEADER=""
+          if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+            AUTH_HEADER="-H \"Authorization: Bearer ${GITHUB_TOKEN}\""
+          fi
+
           commit_payload=$(curl -fsSL \
             -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
             -H "User-Agent: rgsx-webrcade-sync" \
+            ${AUTH_HEADER} \
             "${API_URL}") || {
               echo "Failed to fetch upstream commit payload" >&2
               exit 1
