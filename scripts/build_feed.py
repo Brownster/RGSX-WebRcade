@@ -27,10 +27,12 @@ import argparse
 import json
 import logging
 import os
+import re
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional
+from typing import Dict, Iterable, List, Optional, Union
+from urllib.parse import unquote
 
 
 DEFAULT_RGSX_PATH = Path("/mnt/rgsx/saves/ports/RGSX")
@@ -89,14 +91,24 @@ def build_config() -> Config:
     )
 
 
+ROM_EXT_RE = re.compile(r"\.(zip|7z|chd|rar|iso|bin|cue|gba|gbc|gb|nes|sfc|smc|smd|md|pce|iso|img)$", re.IGNORECASE)
+
+
 def map_system_name(system: Dict, mapping: Dict[str, str]) -> Optional[str]:
-    name = system.get("name")
+    name = system.get("name") or system.get("platform_name")
     if not name:
         return None
 
     mapped = mapping.get(name)
     if mapped:
         return mapped
+
+    folder = system.get("folder")
+    if folder:
+        mapped = mapping.get(folder) or mapping.get(folder.lower())
+        if mapped:
+            logging.debug("Using folder mapping %s -> %s", folder, mapped)
+            return mapped
 
     # Attempt case-insensitive lookup when exact match fails.
     lowered = name.lower()
@@ -130,14 +142,48 @@ def extract_background(game: Dict) -> Optional[str]:
     return game.get("background") or game.get("banner") or game.get("screenshot")
 
 
+def normalize_game_entry(entry: Union[Dict, List, str]) -> Dict:
+    if isinstance(entry, dict):
+        return entry
+    if isinstance(entry, list):
+        normalized: Dict[str, str] = {}
+        if entry:
+            normalized["title"] = entry[0]
+        if len(entry) > 1:
+            normalized["url"] = entry[1]
+        if len(entry) > 2:
+            normalized["size"] = entry[2]
+        return normalized
+    if isinstance(entry, str):
+        return {"title": entry}
+    return {}
+
+
+def derive_title_from_url(url: str) -> Optional[str]:
+    if not url:
+        return None
+    segment = unquote(url.split("/")[-1])
+    return os.path.splitext(segment)[0] or segment
+
+
+def clean_title(raw_title: Optional[str], rom_url: Optional[str]) -> Optional[str]:
+    candidate = (raw_title or "").strip()
+    if candidate:
+        candidate = ROM_EXT_RE.sub("", candidate).strip()
+    if not candidate and rom_url:
+        candidate = ROM_EXT_RE.sub("", derive_title_from_url(rom_url) or "").strip()
+    return candidate or None
+
+
 def build_items(
     games: Iterable[Dict], system_type: str, rom_prefix: Optional[str]
 ) -> List[Dict]:
     items: List[Dict] = []
 
-    for game in games:
-        title = game.get("title") or game.get("name")
+    for raw_game in games:
+        game = normalize_game_entry(raw_game)
         rom_url = resolve_rom_url(game, rom_prefix)
+        title = clean_title(game.get("title") or game.get("name"), rom_url)
 
         if not title or not rom_url:
             logging.debug("Skipping game with missing title/url: %s", game)
@@ -187,7 +233,7 @@ def generate_feed(config: Config, *, dry_run: bool) -> int:
         if not system_type:
             continue
 
-        system_name = system.get("name", "Unknown")
+        system_name = system.get("platform_name") or system.get("name") or "Unknown"
         games_file = config.games_dir / f"{system_name}.json"
         games = load_json(games_file)
         if games is None:

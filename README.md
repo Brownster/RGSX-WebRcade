@@ -59,7 +59,7 @@ Environment variables (set in `docker-compose.yml`) control the generator:
 
 | Variable | Purpose | Default |
 | --- | --- | --- |
-| `RGSX_DATA_PATH` | Path to RGSX cache inside container | `/mnt/rgsx/saves/ports/RGSX` |
+| `RGSX_DATA_PATH` | Path to RGSX cache inside container | `/mnt/rgsx/saves/ports/rgsx` |
 | `FEED_OUTPUT_PATH` | Output feed location | `/var/www/html/content/feeds/rgsx_feed.json` |
 | `SYSTEM_MAPPING_PATH` | System → type map | `/opt/rgsx/system_mapping.json` |
 | `FEED_TITLE` / `FEED_DESCRIPTION` | Feed metadata strings | `RGSX Library` / generated timestamp |
@@ -101,6 +101,7 @@ Before enabling it, ensure that:
 * repository → Settings → Actions → General allows GitHub Actions to create releases
 * `GITHUB_TOKEN` has permission to write packages (default for public repos) so the workflow can push to `ghcr.io`
 * if you rename the image or repository, update `IMAGE_ROOT` inside the workflow file accordingly
+* the base image currently publishes `linux/amd64` layers only, so the workflow defaults to that platform. If upstream adds more architectures, set the repository variable `BUILD_PLATFORMS` to a comma-separated list (for example `linux/amd64,linux/arm64`) and the workflow will honor it.
 
 After committing, you can kick off the first run from the “Actions” tab via the `workflow_dispatch` trigger.
 

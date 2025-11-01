@@ -12,6 +12,7 @@ permissions:
 env:
   GHCR_IMAGE: ghcr.io/${{ github.repository }}
   DOCKERHUB_IMAGE: ${{ vars.DOCKERHUB_IMAGE || secrets.DOCKERHUB_IMAGE }}
+  BUILD_PLATFORMS: ${{ vars.BUILD_PLATFORMS || 'linux/amd64' }}
 
 jobs:
   check-upstream:
@@ -193,7 +194,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          platforms: ${{ env.BUILD_PLATFORMS }}
           push: true
           provenance: false
           tags: ${{ steps.vars.outputs.ghcr_tags }}
@@ -210,7 +211,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          platforms: ${{ env.BUILD_PLATFORMS }}
           push: true
           provenance: false
           tags: ${{ steps.vars.outputs.dh_tags }}
