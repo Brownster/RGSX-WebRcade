@@ -33,9 +33,24 @@ jobs:
           set -euo pipefail
 
           API_URL="https://api.github.com/repos/webrcade/webrcade/commits/main"
-          UPSTREAM_SHA=$(curl -fsSL "${API_URL}" | jq -r '.sha')
+          commit_payload=$(curl -fsSL \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+            -H "User-Agent: rgsx-webrcade-sync" \
+            "${API_URL}") || {
+              echo "Failed to fetch upstream commit payload" >&2
+              exit 1
+            }
+
+          message=$(echo "${commit_payload}" | jq -r '.message // empty')
+          if [[ -n "${message}" && "${message}" != "null" ]]; then
+            echo "GitHub API returned error: ${message}" >&2
+            exit 1
+          fi
+
+          UPSTREAM_SHA=$(echo "${commit_payload}" | jq -r '.sha')
           if [[ -z "${UPSTREAM_SHA}" || "${UPSTREAM_SHA}" == "null" ]]; then
-            echo "Failed to fetch upstream SHA" >&2
+            echo "Failed to parse upstream SHA from payload" >&2
             exit 1
           fi
 
