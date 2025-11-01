@@ -11,6 +11,8 @@ services:
       - "8443:443"
     volumes:
       # webЯcade content directory (feeds, save states, etc.)
+      # Generated feed URL: http://localhost:8080/content/feeds/rgsx_feed.json
+      # BIOS files URL: http://localhost:8080/content/bios/
       - ./content:/var/www/html/content
 
       # IMPORTANT: Update this path to match your RGSX installation

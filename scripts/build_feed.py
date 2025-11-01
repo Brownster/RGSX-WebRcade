@@ -17,8 +17,10 @@ Environment variables:
   FEED_CATEGORY_PREFIX Optional string prefixed to each category title.
   ROM_PREFIX_URL       Optional base URL used when game metadata lacks a fully-qualified URL.
   PLATFORM_IMAGE_URL_PREFIX Optional base URL prefix for platform images (category thumbnails).
-  NEOGEO_BIOS_URL      URL to Neo Geo BIOS file (neogeo.zip) required for Neo Geo games.
-  PSX_BIOS_URLS        Comma-separated URLs to PlayStation BIOS files (scph5500.bin,scph5501.bin,scph5502.bin).
+  BIOS_URL_PREFIX      Base URL for locally hosted BIOS files (default http://localhost:8080/content/bios).
+  BIOS_LOCAL_PATH      Local filesystem path where BIOS files are stored (default /var/www/html/content/bios).
+  NEOGEO_BIOS_URL      URL to Neo Geo BIOS file (neogeo.zip) - used if local file not found.
+  PSX_BIOS_URLS        Comma-separated URLs to PlayStation BIOS files - used if local files not found.
 
 Command line flags:
   --dry-run            Do not write feed file; emit to stdout instead.
@@ -54,6 +56,8 @@ class Config:
     category_prefix: str
     rom_prefix_url: Optional[str]
     platform_image_url_prefix: Optional[str]
+    bios_url_prefix: Optional[str]
+    bios_local_path: Path
     neogeo_bios_url: Optional[str]
     psx_bios_urls: Optional[List[str]]
 
@@ -84,6 +88,11 @@ def build_config() -> Config:
     category_prefix = os.environ.get("FEED_CATEGORY_PREFIX", "")
     rom_prefix_url = os.environ.get("ROM_PREFIX_URL")
     platform_image_url_prefix = os.environ.get("PLATFORM_IMAGE_URL_PREFIX")
+
+    # BIOS configuration
+    bios_url_prefix = os.environ.get("BIOS_URL_PREFIX", "http://localhost:8080/content/bios")
+    bios_local_path = Path(os.environ.get("BIOS_LOCAL_PATH", "/var/www/html/content/bios"))
+
     neogeo_bios_url = os.environ.get(
         "NEOGEO_BIOS_URL",
         "https://archive.org/download/neogeoaesmvscomplete/BIOS/neogeo.zip"
@@ -107,6 +116,8 @@ def build_config() -> Config:
         category_prefix=category_prefix,
         rom_prefix_url=rom_prefix_url.rstrip("/") if rom_prefix_url else None,
         platform_image_url_prefix=platform_image_url_prefix.rstrip("/") if platform_image_url_prefix else None,
+        bios_url_prefix=bios_url_prefix.rstrip("/") if bios_url_prefix else None,
+        bios_local_path=bios_local_path,
         neogeo_bios_url=neogeo_bios_url,
         psx_bios_urls=psx_bios_urls,
     )
@@ -231,6 +242,46 @@ def build_items(
     return items
 
 
+def resolve_bios_urls(config: Config) -> Dict[str, Union[str, List[str]]]:
+    """
+    Resolve BIOS URLs by checking for local files first, falling back to configured URLs.
+
+    Returns a dict with 'neogeo_bios' and/or 'psx_bios' keys.
+    """
+    bios_props = {}
+
+    # Check for local Neo Geo BIOS
+    neogeo_local = config.bios_local_path / "neogeo.zip"
+    if neogeo_local.exists() and config.bios_url_prefix:
+        bios_props["neogeo_bios"] = f"{config.bios_url_prefix}/neogeo.zip"
+        logging.info("Using local Neo Geo BIOS: %s", neogeo_local)
+    elif config.neogeo_bios_url:
+        bios_props["neogeo_bios"] = config.neogeo_bios_url
+        logging.info("Using remote Neo Geo BIOS: %s", config.neogeo_bios_url)
+
+    # Check for local PlayStation BIOS files
+    psx_files = ["scph5500.bin", "scph5501.bin", "scph5502.bin"]
+    psx_local_urls = []
+    psx_all_local = True
+
+    for psx_file in psx_files:
+        psx_local = config.bios_local_path / psx_file
+        if psx_local.exists() and config.bios_url_prefix:
+            psx_local_urls.append(f"{config.bios_url_prefix}/{psx_file}")
+        else:
+            psx_all_local = False
+            break
+
+    if psx_all_local and psx_local_urls:
+        bios_props["psx_bios"] = psx_local_urls
+        logging.info("Using local PlayStation BIOS files from %s", config.bios_local_path)
+    elif config.psx_bios_urls:
+        bios_props["psx_bios"] = config.psx_bios_urls
+        logging.info("Using remote PlayStation BIOS URLs")
+
+    return bios_props
+
+
 def generate_feed(config: Config, *, dry_run: bool) -> int:
     systems = load_json(config.systems_file)
     if systems is None:
@@ -250,11 +301,8 @@ def generate_feed(config: Config, *, dry_run: bool) -> int:
     }
 
     # Add feed-level properties for systems that require BIOS files
-    feed_props = {}
-    if config.neogeo_bios_url:
-        feed_props["neogeo_bios"] = config.neogeo_bios_url
-    if config.psx_bios_urls:
-        feed_props["psx_bios"] = config.psx_bios_urls
+    # Check for local BIOS files first, fall back to configured URLs
+    feed_props = resolve_bios_urls(config)
     if feed_props:
         feed["props"] = feed_props
 

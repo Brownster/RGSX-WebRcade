@@ -52,8 +52,9 @@ Copy these files into a new repository (or keep them here temporarily) and updat
    docker compose build
    docker compose up -d
    ```
-5. Visit `https://<host>:8443` (or `http://<host>:8080`) to reach webЯcade. The generated feed lives at `/content/feeds/rgsx_feed.json` inside the container, so expose it via the corresponding URL (for example, `https://<host>:8443/content/feeds/rgsx_feed.json`).
-6. In the webЯcade UI, add the feed URL and you should see categories for each RGSX system.
+5. Visit `https://<host>:8443` (or `http://<host>:8080`) to reach webЯcade.
+6. In the webЯcade UI, add the feed URL: `http://<host>:8080/content/feeds/rgsx_feed.json`
+7. You should see categories for each RGSX system with thumbnails and games ready to play.
 
 ## Feed Generator Configuration
 
@@ -68,8 +69,10 @@ Environment variables (set in `docker-compose.yml`) control the generator:
 | `FEED_CATEGORY_PREFIX` | Prefix prepended to each category title | `""` |
 | `ROM_PREFIX_URL` | Optional base URL if RGSX game entries only contain relative paths | unset |
 | `PLATFORM_IMAGE_URL_PREFIX` | Base URL for platform artwork (console images) | unset |
-| `NEOGEO_BIOS_URL` | URL to Neo Geo BIOS file (neogeo.zip) | `https://archive.org/download/neogeoaesmvscomplete/BIOS/neogeo.zip` |
-| `PSX_BIOS_URLS` | Comma-separated URLs to PlayStation BIOS files | Default URLs for scph5500.bin, scph5501.bin, scph5502.bin |
+| `BIOS_URL_PREFIX` | Base URL for locally hosted BIOS files | `http://localhost:8080/content/bios` |
+| `BIOS_LOCAL_PATH` | Local filesystem path for BIOS files | `/var/www/html/content/bios` |
+| `NEOGEO_BIOS_URL` | Fallback URL to Neo Geo BIOS if local file not found | `https://archive.org/download/...` |
+| `PSX_BIOS_URLS` | Fallback URLs to PlayStation BIOS if local files not found | Default URLs for scph5500.bin, etc. |
 | `FEED_RUN_ON_START` | Set to `0` to skip the initial run at container start | `1` |
 
 ### Platform Artwork
@@ -85,9 +88,32 @@ This displays console artwork for each system category in the webЯcade UI.
 
 The feed includes automatic BIOS configuration for:
 * **Neo Geo**: Requires neogeo.zip BIOS file
-* **PlayStation**: Requires three BIOS files (Japan/USA/Europe regions)
+* **PlayStation**: Requires three BIOS files (scph5500.bin, scph5501.bin, scph5502.bin for Japan/USA/Europe regions)
 
-These BIOS files are automatically downloaded by webЯcade when needed. You can override the URLs using the environment variables above.
+#### Local BIOS Hosting (Recommended)
+
+To host BIOS files locally instead of using remote URLs:
+
+1. Place your BIOS files in the `./content/bios/` directory:
+   ```bash
+   ./content/bios/
+   ├── neogeo.zip          # Neo Geo BIOS
+   ├── scph5500.bin        # PlayStation BIOS (Japan)
+   ├── scph5501.bin        # PlayStation BIOS (USA)
+   └── scph5502.bin        # PlayStation BIOS (Europe)
+   ```
+
+2. The feed generator will automatically detect these files and use local URLs.
+
+3. BIOS files will be served at: `http://localhost:8080/content/bios/<filename>`
+
+#### Remote BIOS Fallback
+
+If local BIOS files are not found, the feed will automatically fall back to the configured remote URLs:
+* `NEOGEO_BIOS_URL` - Default: archive.org
+* `PSX_BIOS_URLS` - Default: psx.arthus.net
+
+You can override these URLs in `docker-compose.yml` environment section.
 
 Adjust the cron schedule by editing `cron/rgsx-feed`. For example, to run hourly change `*/30` to `0`.
 
